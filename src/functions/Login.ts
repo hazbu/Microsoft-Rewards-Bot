@@ -57,6 +57,39 @@ export class Login {
     private tokenUrl = 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token'
     private scope = 'service::prod.rewardsplatform.microsoft.com::MBI_SSL'
 
+    private static readonly PASSWORD_OPTION_SELECTORS = {
+        otherWays: [
+            '#signInAnotherWay',
+            'button#signInAnotherWay',
+            'button[data-id="signInAnotherWay"]',
+            'button:has-text("Other ways to sign in")',
+            'span[role="button"]:has-text("Other ways to sign in")',
+            'a:has-text("Other ways to sign in")',
+            'button:has-text("Sign in another way")',
+            'span[role="button"]:has-text("Sign in another way")',
+            'a:has-text("Sign in another way")',
+            'button:has-text("Try another way")',
+            'span[role="button"]:has-text("Try another way")',
+            'button:has-text("Use a different verification option")'
+        ],
+        usePassword: [
+            'button:has-text("Use your password")',
+            'button:has-text("Use my password")',
+            'span[role="button"]:has-text("Use your password")',
+            'span[role="button"]:has-text("Use my password")',
+            'a:has-text("Use your password")',
+            'a:has-text("Use my password")',
+            'div[role="menuitem"]:has-text("Use your password")',
+            'div[role="menuitem"]:has-text("Use my password")',
+            'div[role="button"]:has-text("Use your password")',
+            'div[role="button"]:has-text("Use my password")',
+            'div[role="option"]:has-text("Use your password")',
+            'div[role="option"]:has-text("Use my password")',
+            'button[data-value="Password"]',
+            'div[data-value="Password"]'
+        ]
+    } as const
+
     // Handlers
     private totpHandler: TotpHandler
     private passkeyHandler: PasskeyHandler
@@ -933,13 +966,35 @@ export class Login {
 
     private async switchToPasswordLink(page: Page) {
         try {
-            const link = await page.locator('xpath=//span[@role="button" and (contains(translate(normalize-space(.),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"use your password") or contains(translate(normalize-space(.),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"utilisez votre mot de passe"))]').first()
-            if (await link.isVisible().catch(() => false)) {
-                await link.click().catch(logError('LOGIN', 'Use password link click failed', this.bot.isMobile))
-                await this.bot.utils.wait(800)
-                this.bot.log(this.bot.isMobile, 'LOGIN', 'Clicked "Use your password" link')
+            const passwordClicked = await this.tryClickPasswordOption(page)
+            if (passwordClicked) return
+
+            const otherWays = await this.clickFirstVisibleSelector(page, Login.PASSWORD_OPTION_SELECTORS.otherWays)
+            if (otherWays) {
+                await this.bot.utils.wait(600)
+                this.bot.log(this.bot.isMobile, 'LOGIN', 'Opened alternate sign-in options')
+                await this.tryClickPasswordOption(page)
             }
-        } catch { /* ignore */ }
+        } catch { /* Link may not be present - expected on password-first flows */ }
+    }
+
+    private async tryClickPasswordOption(page: Page): Promise<boolean> {
+        const clicked = await this.clickFirstVisibleSelector(page, Login.PASSWORD_OPTION_SELECTORS.usePassword)
+        if (clicked) {
+            await this.bot.utils.wait(800)
+            this.bot.log(this.bot.isMobile, 'LOGIN', 'Clicked "Use your password" option')
+            return true
+        }
+
+        const legacy = await page.locator('xpath=//span[@role="button" and (contains(translate(normalize-space(.),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"use your password") or contains(translate(normalize-space(.),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"utilisez votre mot de passe"))]').first()
+        if (await legacy.isVisible().catch(() => false)) {
+            await legacy.click().catch(logError('LOGIN', 'Use password link click failed', this.bot.isMobile))
+            await this.bot.utils.wait(800)
+            this.bot.log(this.bot.isMobile, 'LOGIN', 'Clicked "Use your password" link')
+            return true
+        }
+
+        return false
     }
 
     private async disableFido(page: Page) {
