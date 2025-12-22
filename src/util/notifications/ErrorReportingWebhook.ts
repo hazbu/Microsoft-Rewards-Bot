@@ -5,6 +5,15 @@ import path from 'path'
 import { DISCORD } from '../../constants'
 import { Config } from '../../interface/Config'
 
+interface DiscordEmbed {
+    title: string
+    description: string
+    color: number
+    fields: Array<{ name: string; value: string; inline: boolean }>
+    timestamp: string
+    footer: { text: string; icon_url: string }
+}
+
 interface ErrorReportPayload {
     error: string
     stack?: string
@@ -58,8 +67,11 @@ function buildDiscordPayload(config: Config, error: Error | string, additionalCo
 
     if (additionalContext) {
         for (const [key, value] of Object.entries(additionalContext)) {
-            if (typeof value === 'string') payloadContext[key as keyof typeof payloadContext] = sanitizeSensitiveText(value)
-            else payloadContext[key as keyof typeof payloadContext] = value as unknown
+            if (typeof value === 'string') {
+                (payloadContext as Record<string, unknown>)[key] = sanitizeSensitiveText(value)
+            } else {
+                (payloadContext as Record<string, unknown>)[key] = value
+            }
         }
     }
 
@@ -73,7 +85,7 @@ function buildDiscordPayload(config: Config, error: Error | string, additionalCo
         }
     })()
 
-    const embed: unknown = {
+    const embed: DiscordEmbed = {
         title: '🐛 Automatic Error Report',
         description: `\`\`\`js\n${sanitizedMessage.slice(0, 700)}\n\`\`\``,
         color: DISCORD.COLOR_RED,
